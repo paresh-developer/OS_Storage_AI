@@ -1,6 +1,6 @@
 import pytest
 
-from storage_ai.utils import human_duration_days, human_size
+from storage_ai.utils import human_duration_days, human_duration_seconds, human_size
 
 
 @pytest.mark.parametrize(
@@ -41,3 +41,22 @@ def test_human_duration_days_large_value_is_far_shorter_than_raw_days():
 def test_human_duration_days_small_values_stay_in_days():
     assert human_duration_days(1) == "1 day"
     assert human_duration_days(2) == "2 days"
+
+
+@pytest.mark.parametrize(
+    "seconds,expected_unit",
+    [
+        (0.4, "less than a second"),
+        (30, "second"),
+        (90, "minute"),
+        (7200, "hour"),
+    ],
+)
+def test_human_duration_seconds_picks_the_right_unit(seconds, expected_unit):
+    assert expected_unit in human_duration_seconds(seconds)
+
+
+def test_human_duration_seconds_exact_values():
+    assert human_duration_seconds(45) == "45 seconds"
+    assert human_duration_seconds(90) == "1.5 minutes"
+    assert human_duration_seconds(7200) == "2.0 hours"

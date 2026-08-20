@@ -1,0 +1,98 @@
+PROMPT LOG — Storage AI session
+Session date: 2026-08-20
+
+NOTE ON TIMESTAMPS
+------------------
+Claude Code does not expose the exact send-time of each chat message to me
+directly. The timestamps below are reconstructed from filesystem evidence
+(mtimes of files I created/edited immediately after each prompt, captured
+via `stat`) and from session/tool-call ordering. Entries marked [confirmed]
+are anchored to an actual file timestamp from that turn. Entries marked
+[estimated] produced no file changes (pure Q&A) and are placed by ordering
+alone, bounded between the confirmed timestamps before and after them — the
+actual send time could be anywhere in that window.
+
+------------------------------------------------------------
+
+[estimated, ~04:31] "HI"
+
+[confirmed, ~04:32–04:57, work spanned through ReadMe.md update at 04:56:24
+and docs/METHODOLOGY.md at 04:56:46]
+"we working on new project: AI at Application Level: - Build an AI
+assistant that analyzes file usage, identifies duplicate and unused files,
+and predicts future storage needs. The solution should provide intelligent
+cleanup and archiving recommendations to help users manage storage
+efficiently."
+
+[same turn — answers to clarifying questions, not free text]
+Interface: "Desktop GUI app"
+AI approach: "Heuristics + local ML model"
+Tech stack: "Python"
+Project scope: "Academic/course project"
+
+[confirmed, ~05:02, sop.md created at 05:02:13]
+"please create sop.md how you created and what required to run it and how
+we solve any error or issue if any faqs"
+
+[confirmed, ~05:11, duplicates_tab.py/unused_tab.py/recommendations_tab.py
+edited 05:11:10–05:11:47]
+"in duplicate files and unused files two tabs columns resize option is not
+given, and we should give the tooltip to path or any cell data if content
+of cell is larger then available width"
+
+[confirmed, ~05:17, utils.py/dashboard_tab.py/test_utils.py edited
+05:17:13–05:17:51]
+"Est. Time to full should automatically convert to hours, days, months,
+years, decads as per the numbers, currently it is showing ~627490 days it
+is difficult to remember"
+
+[estimated, ~05:18, between the prior confirmed turn and the next]
+"for unused files detection what logic is used ?"
+
+[estimated, ~05:20]
+"where you stored sqlite files ?"
+
+[estimated, ~05:24]
+"i'm not able to see the file"
+
+[estimated, ~05:26]
+"this program is cross platform ? can i run same program in windows ?"
+
+[confirmed, 05:27:59 — time of the `date` check run while handling this
+request]
+"write down as note in prompts.txt all prompt i given to you with
+timestamp"
+
+[estimated, ~05:29, no file changes -- discussion only]
+"in this program what ai tasks are involved ?"
+
+[estimated, ~05:32, no file changes -- I gave a recommendation and stopped,
+per the exploratory-question norm, without building anything yet]
+"can you draw any use full graphs ? like kmeans, treemap, sunburst ?"
+
+[confirmed, ~05:34–05:47, treemap.py created 05:35:58, clustering.py
+created 05:40:06, plus dashboard_tab.py 2x2 grid rework and dataviz-skill
+palette validation in the same turn]
+"yes, what kmeans will represent ?"
+
+[confirmed, ~05:50–06:05, category_advisor.py created 05:56:05,
+dashboard_tab.py's category box added 05:58:20, path_classifier.py's
+/tmp-matching bug fixed 06:02:08, docs/METHODOLOGY.md updated 06:04:39]
+"this is storage optimizer so, it also need to have all info about the
+installed application logs like where mongoDB, postgres logs are stored
+and suggest any config changes as per data increases on that particular
+paths. these paths will be different by different os platforms, but this
+will be enough for our program it can understand what are the os file
+hierchie for linux and windows, what are the system files that will not
+change, what are the log files, what are the user specific directories,
+recyclebin files, etc..., let me know what you think about this."
+
+[same turn — answer to clarifying question, not free text]
+Scope depth: "Category classifier + known-path labels (Recommended)"
+
+[confirmed, 06:06:34 — time of the `date` check run while handling this
+request]
+"did you updated prompt.txt ?"
+
+------------------------------------------------------------
+End of log.

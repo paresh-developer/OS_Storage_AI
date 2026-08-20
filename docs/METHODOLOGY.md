@@ -78,6 +78,50 @@ uncertainty once hashes match), the classifier/heuristic score for unused
 files, and a slightly reduced confidence for a forecast based on the weaker
 file-timestamp fallback.
 
+## 5. Path classification and application/log awareness
+
+The tool also classifies every scanned path into one of seven categories --
+`system`, `log`, `cache`, `application_data`, `user_data`, `trash`, or
+`other` -- and, when a path matches a well-known service default (e.g.
+`/var/lib/postgresql`, `C:\Program Files\MongoDB`), attaches that service's
+name as a bonus label (`storage_ai/path_classifier.py`).
+
+This is deliberately **not** a config-file parser. PostgreSQL's
+`data_directory` and MongoDB's `storage.dbPath` are user-configurable, so a
+lookup table of "default" install locations is only ever a hint -- a real
+production database is quite likely to have been pointed somewhere custom.
+Rather than pretend a static table can resolve the *real* location, the
+classifier matches by path pattern (curated absolute prefixes for known
+top-level system/service directories, then generic name- and
+extension-based rules -- e.g. any `*.log` file, any folder literally named
+`cache`) and simply falls back to a generic category when nothing matches.
+Reading actual service configs to find the true configured path was
+considered and explicitly deferred: it would need one parser per service,
+possibly elevated read permissions, and would still be one wrong assumption
+away from misleading a user -- the pattern-based approach degrades
+gracefully instead of confidently guessing wrong.
+
+Config-change suggestions follow the same philosophy as the rest of the
+app: a fixed, static advice string keyed to the matched category or service
+(`storage_ai/category_advisor.py`) -- e.g. "consider log rotation" -- never
+an attempt to read or edit a live service's actual configuration. Editing a
+running database's config is a different risk class than trashing a stale
+PDF: getting it wrong can mean data loss or a service that won't restart.
+
+**Safety consequence:** files categorized `system` or `application_data`
+are excluded from the unused-file, duplicate, and clustering analyses
+entirely (`pipeline.py` computes `analyzable_records` before any of those
+run). A live database's data files can look "unused" under naive
+access-time heuristics while the database is very much running --
+particularly on a filesystem mounted `noatime`, where access time never
+updates at all -- so the staleness heuristics that are appropriate for a
+Downloads folder are not safe to apply to a running service's own files.
+These files still count toward the total size, forecast, and the
+dashboard's category breakdown; they just never become a delete/archive
+recommendation. True kernel/virtual filesystems (`/proc`, `/sys`, `/dev`,
+`/run` on Linux) are excluded even earlier, at scan time, so they're never
+walked at all (`scanner.py`'s `_should_prune_dir`).
+
 ## Safety
 
 No recommendation is ever executed automatically, and no action is a hard
@@ -97,3 +141,10 @@ size.
 - The file-timestamp forecast fallback assumes files aren't frequently
   deleted; a tree with heavy churn will overestimate growth until real
   snapshot history accumulates.
+- The known-service labels in path classification are default-location
+  hints, not verified facts -- a custom install (a non-default `data_directory`,
+  a Dockerized database, a non-standard Windows install path) simply won't
+  match and falls back to a generic category rather than a wrong label.
+  This is intentional (see "Path classification" above) but means the
+  service-specific advisory recommendations will under-fire on
+  non-standard setups.

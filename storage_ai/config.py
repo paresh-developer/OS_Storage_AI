@@ -27,6 +27,16 @@ DEFAULT_EXCLUDES = {
 # Files smaller than this are ignored for duplicate hashing (not worth the I/O).
 MIN_DUPLICATE_SIZE_BYTES = 4096
 
+# Absolute top-level virtual/kernel filesystems -- never walked, regardless
+# of DEFAULT_EXCLUDES above (which matches by name anywhere in the tree,
+# not by a rooted absolute path -- a project could legitimately have a
+# subfolder literally named "proc"). Only meaningful when a scan root is
+# high enough in the tree to reach these (e.g. "/" or "/var"); a normal
+# home-directory scan never encounters them. Windows has no equivalent --
+# its virtual-ish paths ($RECYCLE.BIN, System Volume Information) are
+# already name-matched above.
+LINUX_VIRTUAL_FS_ROOTS = {"/proc", "/sys", "/dev", "/run"}
+
 # A file is a confident "unused" example if untouched this long.
 UNUSED_CONFIDENT_DAYS = 180
 # A file is a confident "active" example if touched this recently.

@@ -11,22 +11,63 @@ import os
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from storage_ai.config import DEFAULT_EXCLUDES
+from storage_ai.config import DEFAULT_EXCLUDES, LINUX_VIRTUAL_FS_ROOTS
+from storage_ai.exceptions import ScanCancelled
 from storage_ai.models import FileRecord
 
-ProgressCallback = Callable[[int, str], None]
+CancelCheck = Callable[[], bool]
+
+
+def _should_prune_dir(current_root: str, dirname: str, exclude_names: set[str]) -> bool:
+    if dirname in exclude_names:
+        return True
+    return os.path.join(current_root, dirname) in LINUX_VIRTUAL_FS_ROOTS
+
+
+def _check_cancelled(cancel_check: CancelCheck | None) -> None:
+    if cancel_check is not None and cancel_check():
+        raise ScanCancelled()
+
+
+def count_files(
+    root: str | Path,
+    excludes: set[str] | None = None,
+    cancel_check: CancelCheck | None = None,
+) -> int:
+    """A fast, stat-free pass that counts what `scan_directory` will
+    actually process (same pruning rules, same symlink skip) -- used to
+    give the real scan a known total to report percentage/ETA against,
+    without trusting a possibly-stale count from a previous scan."""
+    root = Path(root)
+    exclude_names = DEFAULT_EXCLUDES if excludes is None else excludes
+    total = 0
+
+    for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=lambda e: None):
+        _check_cancelled(cancel_check)
+        dirnames[:] = [d for d in dirnames if not _should_prune_dir(current_root, d, exclude_names)]
+        current_path = Path(current_root)
+        for filename in filenames:
+            if not (current_path / filename).is_symlink():
+                total += 1
+
+    return total
 
 
 def scan_directory(
     root: str | Path,
     excludes: set[str] | None = None,
-    on_progress: ProgressCallback | None = None,
+    on_progress: Callable[[int], None] | None = None,
+    cancel_check: CancelCheck | None = None,
+    progress_interval: int = 50,
 ) -> list[FileRecord]:
     """Walk `root` and return metadata for every regular file found.
 
     Symlinks and unreadable entries are skipped rather than raising, since a
     real user directory almost always contains at least one permission-denied
-    or broken-link entry.
+    or broken-link entry. `on_progress`, if given, is called with the running
+    scanned-count every `progress_interval` files (and once more at the end)
+    -- not on every single file, to keep cross-thread signal traffic modest
+    on a scan of hundreds of thousands of files.
     """
     root = Path(root)
     exclude_names = DEFAULT_EXCLUDES if excludes is None else excludes
@@ -34,7 +75,8 @@ def scan_directory(
     scanned = 0
 
     for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=lambda e: None):
-        dirnames[:] = [d for d in dirnames if d not in exclude_names]
+        _check_cancelled(cancel_check)
+        dirnames[:] = [d for d in dirnames if not _should_prune_dir(current_root, d, exclude_names)]
         current_path = Path(current_root)
         try:
             depth = len(current_path.relative_to(root).parts)
@@ -42,6 +84,7 @@ def scan_directory(
             depth = 0
 
         for filename in filenames:
+            _check_cancelled(cancel_check)
             file_path = current_path / filename
             try:
                 if file_path.is_symlink():
@@ -62,11 +105,11 @@ def scan_directory(
                 )
             )
             scanned += 1
-            if on_progress and scanned % 500 == 0:
-                on_progress(scanned, str(file_path))
+            if on_progress and scanned % progress_interval == 0:
+                on_progress(scanned)
 
     if on_progress:
-        on_progress(scanned, "done")
+        on_progress(scanned)
     return records
 
 
@@ -82,7 +125,7 @@ def iter_directory(
     exclude_names = DEFAULT_EXCLUDES if excludes is None else excludes
 
     for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=lambda e: None):
-        dirnames[:] = [d for d in dirnames if d not in exclude_names]
+        dirnames[:] = [d for d in dirnames if not _should_prune_dir(current_root, d, exclude_names)]
         current_path = Path(current_root)
         try:
             depth = len(current_path.relative_to(root).parts)

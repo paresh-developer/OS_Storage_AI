@@ -15,6 +15,7 @@ _KIND_LABELS = {
     "delete_duplicate": "Duplicate",
     "archive_unused": "Unused",
     "storage_warning": "Warning",
+    "category_advisory": "Advisory",
 }
 
 

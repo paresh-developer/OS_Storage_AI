@@ -10,8 +10,10 @@ hash), which matters a lot once a tree has tens of thousands of files.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Callable
 
 from storage_ai.config import MIN_DUPLICATE_SIZE_BYTES
+from storage_ai.exceptions import ScanCancelled
 from storage_ai.hashing import full_hash, partial_hash
 from storage_ai.models import DuplicateGroup, FileRecord
 
@@ -25,6 +27,7 @@ def _choose_keeper(paths: list[str], created_times: dict[str, float]) -> str:
 def find_duplicates(
     records: list[FileRecord],
     min_size: int = MIN_DUPLICATE_SIZE_BYTES,
+    cancel_check: Callable[[], bool] | None = None,
 ) -> list[DuplicateGroup]:
     by_size: dict[int, list[FileRecord]] = defaultdict(list)
     for record in records:
@@ -34,6 +37,8 @@ def find_duplicates(
     groups: list[DuplicateGroup] = []
 
     for size, same_size_records in by_size.items():
+        if cancel_check is not None and cancel_check():
+            raise ScanCancelled()
         if len(same_size_records) < 2:
             continue
 

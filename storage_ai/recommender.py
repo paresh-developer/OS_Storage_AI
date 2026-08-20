@@ -18,6 +18,7 @@ def build_recommendations(
     duplicate_groups: list[DuplicateGroup],
     unused_candidates: list[UnusedCandidate],
     forecast: StorageForecast,
+    category_recommendations: list[Recommendation] | None = None,
 ) -> list[Recommendation]:
     recommendations: list[Recommendation] = []
 
@@ -62,6 +63,9 @@ def build_recommendations(
                 targets=[],
             )
         )
+
+    if category_recommendations:
+        recommendations.extend(category_recommendations)
 
     recommendations.sort(key=lambda r: (r.kind == "storage_warning", -r.estimated_savings_bytes))
     return recommendations

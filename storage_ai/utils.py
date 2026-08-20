@@ -31,3 +31,17 @@ def human_duration_days(days: float) -> str:
         return f"{years:.1f} year{'s' if years != 1 else ''}"
     decades = days / 3652.5
     return f"{decades:.1f} decade{'s' if decades != 1 else ''}"
+
+
+def human_duration_seconds(seconds: float) -> str:
+    """Same idea as human_duration_days but at the seconds-to-hours scale a
+    scan's estimated-time-remaining actually falls in."""
+    if seconds < 1:
+        return "less than a second"
+    if seconds < 60:
+        return f"{seconds:.0f} second{'s' if seconds != 1 else ''}"
+    minutes = seconds / 60
+    if minutes < 60:
+        return f"{minutes:.1f} minute{'s' if minutes != 1 else ''}"
+    hours = seconds / 3600
+    return f"{hours:.1f} hour{'s' if hours != 1 else ''}"

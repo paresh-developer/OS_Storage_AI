@@ -1,4 +1,7 @@
+import pytest
+
 from storage_ai.duplicates import find_duplicates
+from storage_ai.exceptions import ScanCancelled
 from storage_ai.scanner import scan_directory
 
 
@@ -54,3 +57,14 @@ def test_keeper_is_the_oldest_copy(tmp_path):
     groups = find_duplicates(records)
 
     assert groups[0].keep == str(older)
+
+
+def test_find_duplicates_respects_cancellation(tmp_path):
+    content = "x" * 5000
+    (tmp_path / "a.txt").write_text(content)
+    (tmp_path / "b.txt").write_text(content)
+
+    records = scan_directory(tmp_path)
+
+    with pytest.raises(ScanCancelled):
+        find_duplicates(records, cancel_check=lambda: True)

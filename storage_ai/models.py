@@ -66,3 +66,21 @@ class Recommendation:
     estimated_savings_bytes: int
     confidence: float
     targets: list[str]
+
+
+@dataclass
+class ScanProgress:
+    """A single progress update from run_analysis.
+
+    `fraction` is an overall 0-1 completion estimate across the *whole*
+    pipeline, not just the current stage -- the scanning stage (by far the
+    most variable in duration) gets a real fraction computed from an
+    upfront file count; the fast, bounded stages after it (duplicates,
+    unused-scoring, forecasting, clustering, recommendations) just advance
+    through fixed milestones. `eta_seconds` is only ever populated during
+    the scanning stage, where there's an actual rate to extrapolate from.
+    """
+
+    message: str
+    fraction: float
+    eta_seconds: float | None = None
