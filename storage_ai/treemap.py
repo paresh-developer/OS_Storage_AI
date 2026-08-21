@@ -5,7 +5,7 @@ proportional to value, while keeping each rectangle close to square rather
 than a long sliver -- which is what makes a treemap readable at a glance.
 No plotting library ships a treemap primitive, so this is a small,
 self-contained implementation of the published algorithm; rendering is
-done separately (see gui/dashboard_tab.py) with plain matplotlib patches.
+done separately (see gui/folders_tab.py) with plain matplotlib patches.
 """
 
 from __future__ import annotations
