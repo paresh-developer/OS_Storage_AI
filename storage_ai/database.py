@@ -99,6 +99,38 @@ def get_snapshots(root_path: str, db_path: str | Path = DB_PATH) -> list[dict]:
     ]
 
 
+def get_recent_roots(limit: int = 10, db_path: str | Path = DB_PATH) -> list[dict]:
+    """The most recently scanned distinct folders, most-recent first, each
+    with the stats from *its own* latest snapshot -- backs the "Open
+    Recent" menu."""
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT s.root_path, s.taken_at, s.total_size, s.file_count
+            FROM snapshots s
+            WHERE s.taken_at = (SELECT MAX(taken_at) FROM snapshots WHERE root_path = s.root_path)
+            ORDER BY s.taken_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+    return [
+        {"root_path": r[0], "taken_at": r[1], "total_size": r[2], "file_count": r[3]}
+        for r in rows
+    ]
+
+
+def clear_scan_history(db_path: str | Path = DB_PATH) -> None:
+    """Clears the recent-folders list and the growth-forecast history
+    (snapshots + their extension breakdowns). Deliberately leaves the
+    `actions` audit log untouched -- that's a record of what was actually
+    trashed/archived, a different kind of history than "which folders have
+    I scanned."""
+    with connect(db_path) as conn:
+        conn.execute("DELETE FROM extension_breakdown")
+        conn.execute("DELETE FROM snapshots")
+
+
 def log_action(
     action_type: str,
     path: str,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from PySide6.QtCore import QThread
 from PySide6.QtWidgets import (
     QFileDialog,
@@ -15,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from storage_ai import database
 from storage_ai.gui.dashboard_tab import DashboardTab
 from storage_ai.gui.duplicates_tab import DuplicatesTab
 from storage_ai.gui.recommendations_tab import RecommendationsTab
@@ -22,7 +25,9 @@ from storage_ai.gui.scan_worker import ScanWorker, start_scan
 from storage_ai.gui.unused_tab import UnusedTab
 from storage_ai.models import ScanProgress
 from storage_ai.pipeline import AnalysisResult
-from storage_ai.utils import human_duration_seconds
+from storage_ai.utils import human_duration_days, human_duration_seconds
+
+_MAX_RECENT_ENTRIES = 10
 
 
 class MainWindow(QMainWindow):
@@ -33,6 +38,8 @@ class MainWindow(QMainWindow):
 
         self._thread: QThread | None = None
         self._worker: ScanWorker | None = None
+
+        self._build_menu_bar()
 
         central = QWidget()
         self.setCentralWidget(central)
@@ -58,6 +65,49 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._unused_tab, "Unused Files")
         self._tabs.addTab(self._recommendations_tab, "Recommendations")
         layout.addWidget(self._tabs)
+
+    def _build_menu_bar(self) -> None:
+        file_menu = self.menuBar().addMenu("&File")
+
+        self._recent_menu = file_menu.addMenu("Open &Recent")
+        self._recent_menu.aboutToShow.connect(self._populate_recent_menu)
+
+        file_menu.addSeparator()
+
+        clear_recent_action = file_menu.addAction("Clear Recent Scans...")
+        clear_recent_action.triggered.connect(self._clear_recent_scans)
+
+    def _populate_recent_menu(self) -> None:
+        self._recent_menu.clear()
+        recents = database.get_recent_roots(limit=_MAX_RECENT_ENTRIES)
+
+        if not recents:
+            empty_action = self._recent_menu.addAction("(No recent scans)")
+            empty_action.setEnabled(False)
+            return
+
+        for entry in recents:
+            days_ago = (time.time() - entry["taken_at"]) / 86400
+            label = f"{entry['root_path']}  --  {human_duration_days(max(days_ago, 0))} ago, {entry['file_count']:,} files"
+            action = self._recent_menu.addAction(label)
+            action.triggered.connect(lambda checked=False, root=entry["root_path"]: self._load_recent(root))
+
+    def _load_recent(self, root: str) -> None:
+        self._path_field.setText(root)
+        self._start_scan()
+
+    def _clear_recent_scans(self) -> None:
+        confirm = QMessageBox.question(
+            self,
+            "Clear recent scans",
+            "This clears the Open Recent list and the stored scan history used for "
+            "growth forecasting. It does not touch any files on disk, but it cannot "
+            "be undone. Continue?",
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+        database.clear_scan_history()
+        QMessageBox.information(self, "Cleared", "Recent scan history has been cleared.")
 
     def _build_scan_bar(self) -> QHBoxLayout:
         row = QHBoxLayout()
