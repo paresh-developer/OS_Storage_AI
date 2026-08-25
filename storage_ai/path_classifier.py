@@ -76,6 +76,11 @@ def _linux_prefix_rules(home: str) -> list[tuple[str, str, str | None]]:
         ("/var/lib/redis", CATEGORY_APPLICATION_DATA, "Redis"),
         ("/var/lib/docker", CATEGORY_APPLICATION_DATA, "Docker"),
         ("/var/lib/elasticsearch", CATEGORY_APPLICATION_DATA, "Elasticsearch"),
+        ("/var/lib/grafana", CATEGORY_APPLICATION_DATA, "Grafana"),
+        ("/var/lib/prometheus", CATEGORY_APPLICATION_DATA, "Prometheus"),
+        ("/var/lib/rabbitmq", CATEGORY_APPLICATION_DATA, "RabbitMQ"),
+        ("/var/lib/influxdb", CATEGORY_APPLICATION_DATA, "InfluxDB"),
+        ("/var/lib/clickhouse", CATEGORY_APPLICATION_DATA, "ClickHouse"),
         (f"{home}/.cache", CATEGORY_CACHE, None),
         (f"{home}/.local/share/Trash", CATEGORY_TRASH, None),
     ]

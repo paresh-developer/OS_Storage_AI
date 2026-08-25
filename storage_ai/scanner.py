@@ -18,7 +18,7 @@ from storage_ai.models import FileRecord
 CancelCheck = Callable[[], bool]
 
 
-def _should_prune_dir(current_root: str, dirname: str, exclude_names: set[str]) -> bool:
+def should_prune_dir(current_root: str, dirname: str, exclude_names: set[str]) -> bool:
     if dirname in exclude_names:
         return True
     return os.path.join(current_root, dirname) in LINUX_VIRTUAL_FS_ROOTS
@@ -44,7 +44,7 @@ def count_files(
 
     for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=lambda e: None):
         _check_cancelled(cancel_check)
-        dirnames[:] = [d for d in dirnames if not _should_prune_dir(current_root, d, exclude_names)]
+        dirnames[:] = [d for d in dirnames if not should_prune_dir(current_root, d, exclude_names)]
         current_path = Path(current_root)
         for filename in filenames:
             if not (current_path / filename).is_symlink():
@@ -76,7 +76,7 @@ def scan_directory(
 
     for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=lambda e: None):
         _check_cancelled(cancel_check)
-        dirnames[:] = [d for d in dirnames if not _should_prune_dir(current_root, d, exclude_names)]
+        dirnames[:] = [d for d in dirnames if not should_prune_dir(current_root, d, exclude_names)]
         current_path = Path(current_root)
         try:
             depth = len(current_path.relative_to(root).parts)
@@ -125,7 +125,7 @@ def iter_directory(
     exclude_names = DEFAULT_EXCLUDES if excludes is None else excludes
 
     for current_root, dirnames, filenames in os.walk(root, topdown=True, onerror=lambda e: None):
-        dirnames[:] = [d for d in dirnames if not _should_prune_dir(current_root, d, exclude_names)]
+        dirnames[:] = [d for d in dirnames if not should_prune_dir(current_root, d, exclude_names)]
         current_path = Path(current_root)
         try:
             depth = len(current_path.relative_to(root).parts)

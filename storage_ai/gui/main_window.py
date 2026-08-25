@@ -24,6 +24,7 @@ from storage_ai.gui.duplicates_tab import DuplicatesTab
 from storage_ai.gui.file_types_tab import FileTypesTab
 from storage_ai.gui.folders_tab import FoldersTab
 from storage_ai.gui.forecast_tab import ForecastTab
+from storage_ai.gui.live_activity_tab import LiveActivityTab
 from storage_ai.gui.recommendations_tab import RecommendationsTab
 from storage_ai.gui.scan_worker import ScanWorker, start_scan
 from storage_ai.gui.unused_tab import UnusedTab
@@ -68,6 +69,7 @@ class MainWindow(QMainWindow):
         self._duplicates_tab = DuplicatesTab()
         self._unused_tab = UnusedTab()
         self._recommendations_tab = RecommendationsTab()
+        self._live_activity_tab = LiveActivityTab()
         self._tabs.addTab(self._dashboard_tab, "Dashboard")
         self._tabs.addTab(self._file_types_tab, "File Types")
         self._tabs.addTab(self._forecast_tab, "Forecast")
@@ -76,6 +78,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._duplicates_tab, "Duplicates")
         self._tabs.addTab(self._unused_tab, "Unused Files")
         self._tabs.addTab(self._recommendations_tab, "Recommendations")
+        self._tabs.addTab(self._live_activity_tab, "Live Activity")
         layout.addWidget(self._tabs)
 
     def _build_menu_bar(self) -> None:
@@ -213,3 +216,7 @@ class MainWindow(QMainWindow):
     def _on_cancelled(self) -> None:
         self._reset_scan_controls()
         self._status_label.setText("Scan cancelled.")
+
+    def closeEvent(self, event) -> None:
+        self._live_activity_tab.stop_if_monitoring()
+        super().closeEvent(event)

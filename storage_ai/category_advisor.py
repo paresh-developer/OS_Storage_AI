@@ -31,6 +31,11 @@ _SERVICE_ADVICE = {
     "Docker": "`docker system prune` reclaims unused images, stopped containers, and build cache layers.",
     "Redis": "Review the appendonly/save settings -- AOF/RDB files grow with write volume.",
     "Elasticsearch": "Review index lifecycle management (ILM) policies -- old indices are a common unbounded-growth source.",
+    "Grafana": "Dashboards/config are small; growth is usually the SQLite/plugin cache -- check the [paths] data directory setting.",
+    "Prometheus": "Review the --storage.tsdb.retention.time flag -- time-series data grows unbounded without a retention limit.",
+    "RabbitMQ": "Unconsumed messages and unacked queues drive disk growth -- check queue depths before assuming it's just logs.",
+    "InfluxDB": "Review retention policies per bucket/database -- like Prometheus, time-series storage grows unbounded without one.",
+    "ClickHouse": "Review TTL settings on tables -- old partitions accumulate unless a TTL or manual OPTIMIZE ... DROP PARTITION policy exists.",
 }
 
 # Below this, an advisory isn't worth surfacing -- it would just be noise.

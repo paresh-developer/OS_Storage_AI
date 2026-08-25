@@ -1,7 +1,7 @@
 import pytest
 
 from storage_ai.exceptions import ScanCancelled
-from storage_ai.scanner import _should_prune_dir, count_files, scan_directory
+from storage_ai.scanner import should_prune_dir, count_files, scan_directory
 
 
 def test_scan_finds_all_files(tmp_path):
@@ -40,22 +40,22 @@ def test_scan_records_size_and_extension(tmp_path):
 
 
 def test_prune_virtual_fs_root_at_actual_root():
-    assert _should_prune_dir("/", "proc", set()) is True
-    assert _should_prune_dir("/", "sys", set()) is True
-    assert _should_prune_dir("/", "dev", set()) is True
-    assert _should_prune_dir("/", "run", set()) is True
+    assert should_prune_dir("/", "proc", set()) is True
+    assert should_prune_dir("/", "sys", set()) is True
+    assert should_prune_dir("/", "dev", set()) is True
+    assert should_prune_dir("/", "run", set()) is True
 
 
 def test_does_not_prune_a_folder_that_merely_shares_a_name():
     # A project can legitimately have a subfolder literally named "proc"
     # (e.g. a Linux kernel source tree) -- only the true root-level virtual
     # filesystem should ever be pruned.
-    assert _should_prune_dir("/home/user/kernel/fs", "proc", set()) is False
+    assert should_prune_dir("/home/user/kernel/fs", "proc", set()) is False
 
 
 def test_prune_still_honors_the_name_exclude_set():
-    assert _should_prune_dir("/home/user/project", "node_modules", {"node_modules"}) is True
-    assert _should_prune_dir("/home/user/project", "src", {"node_modules"}) is False
+    assert should_prune_dir("/home/user/project", "node_modules", {"node_modules"}) is True
+    assert should_prune_dir("/home/user/project", "src", {"node_modules"}) is False
 
 
 def test_count_files_matches_scan_directory(tmp_path):

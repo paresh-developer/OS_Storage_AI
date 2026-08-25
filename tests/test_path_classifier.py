@@ -33,6 +33,14 @@ def test_linux_mongodb_and_mysql_are_recognized():
     assert _linux("/var/lib/mysql/ibdata1").known_service == "MySQL"
 
 
+def test_linux_monitoring_and_messaging_services_are_recognized():
+    assert _linux("/var/lib/grafana/grafana.db").known_service == "Grafana"
+    assert _linux("/var/lib/prometheus/data/chunks_head").known_service == "Prometheus"
+    assert _linux("/var/lib/rabbitmq/mnesia/rabbit@host").known_service == "RabbitMQ"
+    assert _linux("/var/lib/influxdb/data/db0").known_service == "InfluxDB"
+    assert _linux("/var/lib/clickhouse/store/x").known_service == "ClickHouse"
+
+
 def test_linux_var_log_is_log_category_and_not_protected():
     result = _linux("/var/log/postgresql/postgresql-14-main.log")
     assert result.category == CATEGORY_LOG

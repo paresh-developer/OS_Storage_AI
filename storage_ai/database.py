@@ -42,7 +42,32 @@ CREATE TABLE IF NOT EXISTS actions (
     detail TEXT
 );
 
+CREATE TABLE IF NOT EXISTS file_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp REAL NOT NULL,
+    path TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    size INTEGER,
+    uid INTEGER,
+    username TEXT,
+    attribution_source TEXT NOT NULL,
+    pid INTEGER,
+    process_name TEXT
+);
+
+CREATE TABLE IF NOT EXISTS activity_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp REAL NOT NULL,
+    alert_type TEXT NOT NULL,
+    username TEXT,
+    detail TEXT NOT NULL,
+    severity TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_snapshots_root ON snapshots(root_path, taken_at);
+CREATE INDEX IF NOT EXISTS idx_file_events_timestamp ON file_events(timestamp);
+CREATE INDEX IF NOT EXISTS idx_file_events_path ON file_events(path, timestamp);
+CREATE INDEX IF NOT EXISTS idx_activity_alerts_timestamp ON activity_alerts(timestamp);
 """
 
 
@@ -156,3 +181,109 @@ def get_actions(db_path: str | Path = DB_PATH, limit: int = 200) -> list[dict]:
         {"taken_at": r[0], "action_type": r[1], "path": r[2], "size": r[3], "detail": r[4]}
         for r in rows
     ]
+
+
+def record_file_event(event, db_path: str | Path = DB_PATH) -> int:
+    """`event` is a storage_ai.models.FileEvent -- kept as a positional
+    duck-typed param (rather than importing models here) to avoid a
+    database.py <-> models.py import cycle risk as the schema grows."""
+    with connect(db_path) as conn:
+        cursor = conn.execute(
+            "INSERT INTO file_events "
+            "(timestamp, path, event_type, size, uid, username, attribution_source, pid, process_name) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                event.timestamp,
+                event.path,
+                event.event_type,
+                event.size,
+                event.uid,
+                event.username,
+                event.attribution_source,
+                event.pid,
+                event.process_name,
+            ),
+        )
+        return cursor.lastrowid
+
+
+def get_recent_file_events(since: float, limit: int = 500, db_path: str | Path = DB_PATH) -> list[dict]:
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT timestamp, path, event_type, size, uid, username, attribution_source, pid, process_name "
+            "FROM file_events WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
+            (since, limit),
+        ).fetchall()
+    columns = ["timestamp", "path", "event_type", "size", "uid", "username", "attribution_source", "pid", "process_name"]
+    return [dict(zip(columns, r)) for r in rows]
+
+
+def upgrade_event_attribution(audit_event, tolerance_seconds: float = 5.0, db_path: str | Path = DB_PATH) -> bool:
+    """Finds the most recent stat()-attributed file_events row for the same
+    path within `tolerance_seconds` of an AuditFileEvent's timestamp, and
+    upgrades it to real per-operation attribution from auditd. Both the
+    watcher (inotify) and auditd fire for the same real-world operation
+    within a fraction of a second of each other, so a several-second
+    tolerance window is generous, not loose. Returns True if a match was
+    found and updated."""
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT id FROM file_events WHERE path = ? AND ABS(timestamp - ?) <= ? "
+            "AND attribution_source != 'audit' ORDER BY ABS(timestamp - ?) ASC LIMIT 1",
+            (audit_event.path, audit_event.timestamp, tolerance_seconds, audit_event.timestamp),
+        ).fetchone()
+        if row is None:
+            return False
+        conn.execute(
+            "UPDATE file_events SET username = ?, pid = ?, process_name = ?, attribution_source = 'audit' "
+            "WHERE id = ?",
+            (audit_event.username, audit_event.pid, audit_event.process_name, row[0]),
+        )
+        return True
+
+
+def record_alert(alert, db_path: str | Path = DB_PATH) -> int:
+    with connect(db_path) as conn:
+        cursor = conn.execute(
+            "INSERT INTO activity_alerts (timestamp, alert_type, username, detail, severity) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (alert.timestamp, alert.alert_type, alert.username, alert.detail, alert.severity),
+        )
+        return cursor.lastrowid
+
+
+def get_recent_alerts(since: float, limit: int = 200, db_path: str | Path = DB_PATH) -> list[dict]:
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT timestamp, alert_type, username, detail, severity FROM activity_alerts "
+            "WHERE timestamp >= ? ORDER BY timestamp DESC LIMIT ?",
+            (since, limit),
+        ).fetchall()
+    return [
+        {"timestamp": r[0], "alert_type": r[1], "username": r[2], "detail": r[3], "severity": r[4]}
+        for r in rows
+    ]
+
+
+def get_user_activity_summary(since: float, db_path: str | Path = DB_PATH) -> list[dict]:
+    """Per-user event counts and bytes added, since `since` -- backs the
+    Live Activity tab's per-user breakdown."""
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT
+                COALESCE(username, '(unknown)') AS username,
+                COUNT(*) AS event_count,
+                SUM(CASE WHEN event_type IN ('created', 'modified') THEN COALESCE(size, 0) ELSE 0 END) AS bytes_added,
+                SUM(CASE WHEN event_type = 'created' THEN 1 ELSE 0 END) AS created_count,
+                SUM(CASE WHEN event_type = 'modified' THEN 1 ELSE 0 END) AS modified_count,
+                SUM(CASE WHEN event_type = 'deleted' THEN 1 ELSE 0 END) AS deleted_count
+            FROM file_events
+            WHERE timestamp >= ?
+            GROUP BY username
+            ORDER BY event_count DESC
+            """,
+            (since,),
+        ).fetchall()
+    columns = ["username", "event_count", "bytes_added", "created_count", "modified_count", "deleted_count"]
+    return [dict(zip(columns, r)) for r in rows]

@@ -47,6 +47,36 @@ project the same way:
    for their own header text or content (`duplicates_tab.py`,
    `unused_tab.py`, `recommendations_tab.py`) — fixed with explicit
    `setSectionResizeMode(..., Stretch)` / `setColumnWidth(...)` calls.
+8. **Added live activity monitoring as a genuinely separate subsystem**
+   (`watcher.py`, `audit_log.py`, `trend_detector.py`, `watcher_service.py`,
+   plus the Live Activity GUI tab) — checked what tooling the environment
+   actually had *before* writing any code (no `auditd`, no root), then split
+   the work by what could and couldn't be verified here: the `watchdog`-based
+   watcher was tested against real inotify events; the `auditd` log parser
+   was tested thoroughly against realistic sample data (real live capture is
+   documented as unverified, not silently assumed to work); the standalone
+   service was run as a real subprocess with real file activity and a real
+   SIGINT, not just unit-tested in isolation. See
+   [Section 6 of the methodology](docs/METHODOLOGY.md#6-live-activity-monitoring)
+   for the full reasoning, including why IP-address attribution was scoped
+   out entirely rather than half-implemented.
+9. **Added application storage-path discovery as four independently
+   verified tiers**, in order of reliability, rather than a single
+   per-app-taught lookup table: live process introspection via `/proc`
+   (`process_introspection.py`, verified against a real subprocess, not
+   mocked), structured config-file parsing (`config_discovery.py`,
+   verified against realistic MongoDB/PostgreSQL/JSON/TOML samples), the
+   existing curated table (`path_classifier.py`, for classifying a path
+   you already have, not discovering one), and an optional local,
+   CPU-only extractive-QA model (`llm_config_extractor.py`) as a last
+   resort only for config files that don't parse as anything structured.
+   The LLM tier surfaced three real, empirically-found failure modes
+   (question-phrasing sensitivity, imprecise answer spans, and a
+   confidence score that can be *confidently wrong* — hallucinating an
+   answer at 0.47 from text with no path in it at all) before it was
+   trustworthy enough to gate correctly — see
+   [Section 8 of the methodology](docs/METHODOLOGY.md#8-application-storage-path-discovery--beyond-the-curated-table)
+   for what was actually found, not just what was intended.
 
 ## 2. Requirements to run
 
@@ -83,6 +113,26 @@ python3 -m venv .venv
 # 4. Launch the app.
 .venv/bin/python main.py
 ```
+
+### Optional: the local LLM fallback tier for application discovery
+Everything above is enough to run the full app, including tiers 1 and 2 of
+application storage-path discovery (`process_introspection.py`,
+`config_discovery.py`). Tier 3 — the small local extractive-QA model that
+only kicks in for a config file that doesn't parse as JSON/YAML/TOML/INI —
+needs two extra installs (~1GB total) that are **not** part of
+`requirements-dev.txt` on purpose, since most users will never hit that
+fallback path:
+```bash
+.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/pip install -r requirements-llm.txt
+```
+The separate `--index-url` for `torch` matters: without it, pip resolves
+the default CUDA-enabled build, which is several times larger than the
+CPU-only one this app actually uses (there's no GPU code path here at
+all — see `llm_config_extractor.py`). If you skip this step entirely,
+`storage_ai.llm_config_extractor.is_available()` returns `False` and
+`app_discovery.py` silently skips that tier — nothing else in the app
+depends on it.
 
 ## 4. Troubleshooting / common errors
 
@@ -172,6 +222,58 @@ Run pytest from the project root (`.venv/bin/python -m pytest`, not a bare
 *script's own directory* to `sys.path`, not the current working directory —
 this bites you if you invoke a script file from elsewhere by absolute path.
 
+### Live Activity tab shows "(unknown)" as the user for deleted files
+Expected, not a bug: user attribution there is based on `stat()` file
+ownership by default, and there's nothing left to `stat()` once a file is
+deleted. Real per-operation attribution (including for deletes) needs the
+standalone service's `--enable-audit` flag on Linux, which requires root and
+the `auditd` package — see `docs/METHODOLOGY.md`'s "Live activity
+monitoring" section.
+
+### `watcher_service.py --enable-audit` fails with a permission error
+This needs root (or `CAP_AUDIT_CONTROL`/`CAP_AUDIT_READ`) to install audit
+watch rules and read audit records. Run it with `sudo`, or run the exact
+`auditctl`/`ausearch` commands the error message prints as root yourself
+first to confirm the audit subsystem is actually usable on that machine
+before troubleshooting the app further.
+
+### Live monitoring on a broad folder (e.g. `/`) is slow to start, or fails
+Watching a very broad root sets up one inotify watch per subdirectory that
+survives exclusion (`.git`/`node_modules`/`.venv`/`/proc`/`/sys`/`/dev`/`/run`
+are skipped automatically, and a permission-denied subtree is skipped
+rather than aborting everything else — see `docs/METHODOLOGY.md`'s "What
+actually gets watched"). It's still real work, though: expect it to take
+noticeably longer to start on something like a whole home directory or `/`,
+and if it fails with a message about the inotify watch limit, either watch
+a narrower folder or raise the limit as the error message suggests
+(`sudo sysctl fs.inotify.max_user_watches=524288`). For the "who's doing
+what on this server" use case this feature is built for, pointing it at the
+specific shared folder you care about is both faster and more useful than
+watching everything.
+
+### Application discovery's LLM tier never runs / always returns nothing
+This is almost always correct, not a bug. Check, in order:
+1. Was a candidate config file even found for that app name? Tier 3 only
+   runs on a config file that tier 2 (`config_discovery.py`) located but
+   could **not** parse as JSON/YAML/TOML/INI — a config that parses fine
+   but simply has no path-shaped setting in it is a confirmed "nothing
+   here" answer and correctly never reaches the LLM tier at all.
+2. Is the optional dependency installed? Run
+   `.venv/bin/python -c "from storage_ai import llm_config_extractor as m; print(m.is_available())"` —
+   if it prints `False`, install the two packages described above.
+3. If it *is* installed and still returns nothing, that can be a genuine
+   result: the model found no path-shaped substring in any of its
+   attempted answers, which is the intended, conservative rejection
+   behavior (see the hallucination finding in
+   `docs/METHODOLOGY.md`'s §8) rather than a broken install.
+
+### First call into the LLM fallback tier is slow
+Expected — `_load_model()` downloads and loads
+`distilbert-base-cased-distilled-squad` (~260MB) on first use and caches it
+in memory for the process's lifetime (`functools.lru_cache`), plus
+Hugging Face's local model cache on disk after the first run. Subsequent
+calls in the same run are fast; a fresh process pays the load cost again.
+
 ## 5. Design choices and why
 
 Kept brief here — full detail in `docs/METHODOLOGY.md`.
@@ -184,6 +286,11 @@ Kept brief here — full detail in `docs/METHODOLOGY.md`.
 | Size → partial-hash → full-hash duplicate funnel | Avoids fully hashing every file in the tree; only genuine candidates reach the expensive full read. |
 | send2trash / archive, never a hard delete | A storage tool that's occasionally wrong about "unused" must be recoverable — see `actions.py`. |
 | SQLite snapshot history for forecasting | Free, zero-setup, local persistence; a real time series improves the forecast the more the tool is used. |
+| `watchdog` for live monitoring, `auditd` only for attribution | `watchdog` gives real-time events cross-platform with zero privileges; it structurally can't identify *who* acted, which is a job for the kernel audit subsystem, not a filesystem watcher — kept as an optional, Linux-only, opt-in layer rather than a hard requirement. |
+| No IP-address attribution | Only meaningful over a network protocol (Samba/NFS/SSH), and only via that protocol's own server logs — not something a filesystem-level tool can produce without a per-protocol integration this app doesn't assume exists. |
+| Tiered app-storage-path discovery (process → config → optional LLM), curated table kept separate | A fixed lookup table only ever knows apps it was explicitly taught; process/config introspection generalizes to any app without per-app code, and is tried first because it's cheaper and more certain than a model guess. |
+| Extractive QA, not generative, for the optional LLM tier | Can only return text already present in the config, never invent a path outright — a narrower and safer failure mode for a small model than free-form generation. |
+| LLM tier is optional, not a core dependency | Keeps the app's default install offline-friendly and light (~1GB smaller); the fallback is only needed for configs in a format nothing else here understands, which is the uncommon case. |
 
 ## 6. FAQ
 
@@ -227,4 +334,34 @@ scanned.
 
 **Q: Where do I change the thresholds (what counts as "unused", the
 recommendation score cutoff, excluded directories)?**
-All in one place: `storage_ai/config.py`.
+All in one place: `storage_ai/config.py`. Live-activity alert thresholds
+(large-file size, rapid-delete count, etc.) live in `storage_ai/trend_detector.py`.
+
+**Q: Can it tell me *who* is filling up a shared server?**
+Yes, two ways. The GUI's Live Activity tab and the standalone
+`watcher_service.py` both show per-user event counts and bytes added, based
+on file ownership by default. For attribution to the actual acting user on
+every operation (not just the file's owner) — including for deletes, where
+ownership can't be checked after the fact — run the standalone service with
+`--enable-audit` on Linux (needs root and the `auditd` package). It cannot
+tell you a client's IP address; that only exists at the network-protocol
+level (Samba/NFS/SSH), not the filesystem level. See
+`docs/METHODOLOGY.md`'s "Live activity monitoring" section for the full
+picture, including a sample systemd unit.
+
+**Q: Does the live watcher keep running if I close the app?**
+Only if you started it via `python -m storage_ai.watcher_service`, not the
+GUI's Live Activity tab — that one stops when the app closes, since it runs
+inside the desktop process. For monitoring that survives the GUI closing
+(or a server with no GUI at all), run the standalone service, optionally
+installed as a systemd unit.
+
+**Q: How does it find a new/unknown application's data directory, if it's
+not in the curated table?**
+`storage_ai.app_discovery.discover_app_storage_paths("appname")` — it tries
+live process introspection first (what a running process's command line
+or open files actually show), then structured config-file parsing, then
+(only if installed) the optional local LLM tier for configs in a format
+nothing else here parses. It needs no advance, per-app knowledge for the
+first two tiers. See [Section 8 of the methodology](docs/METHODOLOGY.md#8-application-storage-path-discovery--beyond-the-curated-table)
+for the full design and the real bugs found while building it.

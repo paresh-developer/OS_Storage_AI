@@ -35,3 +35,11 @@ def test_categories_without_advice_are_skipped():
 def test_unknown_service_falls_back_to_no_advice_if_not_in_lookup():
     totals = {(CATEGORY_APPLICATION_DATA, "SomeObscureDB"): 2 * GB}
     assert build_category_recommendations(totals) == []
+
+
+def test_newly_added_services_have_matching_advice():
+    for service in ("Grafana", "Prometheus", "RabbitMQ", "InfluxDB", "ClickHouse"):
+        totals = {(CATEGORY_APPLICATION_DATA, service): 2 * GB}
+        [rec] = build_category_recommendations(totals)
+        assert service in rec.title
+        assert len(rec.detail) > 20  # has real advice text, not empty
