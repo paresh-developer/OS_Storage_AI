@@ -15,8 +15,18 @@ full opacity, or None to show everything at normal opacity.
 
 Each subclass also supplies `info_title` / `info_summary` / `info_details`
 to `super().__init__(...)`: `info_summary` is a one-line tooltip shown on
-hover (over the chart and the info button); `info_details` is the fuller
-explanation shown when the info button is clicked.
+hover (over the chart and the info button); `info_details` is the fuller,
+static explanation of how the chart works, shown when the info button is
+clicked.
+
+A subclass can also call `_set_dynamic_detail(text)` at the end of its own
+`update_results`, with a per-scan breakdown of what's actually behind each
+legend row right now (e.g. which real directories a category's total
+came from -- see legend_detail.py). That text is appended below
+`info_details` in the info dialog, so clicking the info button answers
+both "how does this chart work" and "what's actually in this number,"
+instead of leaving the second question to be inferred from an opaque
+total.
 """
 
 from __future__ import annotations
@@ -76,6 +86,7 @@ class ChartTab(QWidget):
         super().__init__()
         self._info_title = info_title
         self._info_details = info_details
+        self._dynamic_detail = ""
         self._selected_row: int | None = None
 
         layout = QHBoxLayout(self)
@@ -115,8 +126,16 @@ class ChartTab(QWidget):
         side_container.setMaximumWidth(300)
         layout.addWidget(side_container, 1)
 
+    def _set_dynamic_detail(self, text: str) -> None:
+        """Subclasses call this at the end of update_results with a
+        per-scan detail block; see the class docstring."""
+        self._dynamic_detail = text
+
     def _show_info(self) -> None:
-        QMessageBox.information(self, self._info_title, self._info_details)
+        text = self._info_details
+        if self._dynamic_detail:
+            text = f"{text}\n\n{self._dynamic_detail}"
+        QMessageBox.information(self, self._info_title, text)
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         row = self._legend_list.row(item)
@@ -140,8 +159,12 @@ class ChartTab(QWidget):
 
     def _reset_selection(self) -> None:
         """Called at the start of a fresh `update_results` so a redraw
-        never leaves a stale selection/highlight from the previous scan."""
+        never leaves a stale selection/highlight from the previous scan.
+        Also clears the dynamic detail text so an early-return branch
+        (e.g. "not enough data yet") can't leave a previous scan's
+        directory breakdown showing under the info button."""
         self._selected_row = None
+        self._dynamic_detail = ""
         self._clear_button.setEnabled(False)
         self._legend_list.blockSignals(True)
         self._legend_list.setCurrentRow(-1)

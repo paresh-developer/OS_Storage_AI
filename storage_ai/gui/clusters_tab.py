@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QListWidgetItem
 
 from storage_ai.gui.chart_tab import ChartTab, make_color_icon
 from storage_ai.gui.palette import SCATTER_SAFE_PALETTE
+from storage_ai.legend_detail import format_directory_breakdown
 from storage_ai.pipeline import AnalysisResult
 
 _DIMMED_ALPHA = 0.12
@@ -44,6 +45,7 @@ class ClustersTab(ChartTab):
             self._ax.set_xticks([])
             self._ax.set_yticks([])
         else:
+            detail_sections = []
             for i, summary in enumerate(clustering.summaries):
                 points = [p for p in clustering.points if p.cluster_id == summary.cluster_id]
                 color = SCATTER_SAFE_PALETTE[i % len(SCATTER_SAFE_PALETTE)]
@@ -56,9 +58,16 @@ class ClustersTab(ChartTab):
                 self._collections.append(collection)
                 icon = make_color_icon(color)
                 self._legend_list.addItem(QListWidgetItem(icon, f"{summary.label}  ({len(points)} files)"))
+                detail_sections.append(
+                    f"{summary.label} ({len(points)} files)\n"
+                    + format_directory_breakdown([(p.path, p.size) for p in points])
+                )
             self._ax.set_xscale("log")
             self._ax.set_xlabel("File size (log scale)")
             self._ax.set_ylabel("Days since last accessed")
+            self._set_dynamic_detail(
+                "Top contributing directories for each cluster above:\n\n" + "\n\n".join(detail_sections)
+            )
 
         self._canvas.draw()
 

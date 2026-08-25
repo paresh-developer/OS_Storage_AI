@@ -18,6 +18,7 @@ from storage_ai.process_introspection import (
     discover_storage_paths_by_name,
     find_pids_by_name,
     list_open_paths,
+    list_running_process_names,
     read_cmdline,
 )
 
@@ -105,3 +106,15 @@ def test_find_pids_by_name_and_discover_by_name(fake_daemon):
     matching = [i for i in infos if i.pid == proc.pid]
     assert matching
     assert any(h.path == str(tmp_path) for h in matching[0].hints)
+
+
+def test_list_running_process_names_includes_the_fake_daemon(fake_daemon):
+    proc, _tmp_path = fake_daemon
+
+    with open(f"/proc/{proc.pid}/comm") as f:
+        real_comm = f.read().strip()
+
+    names = list_running_process_names()
+
+    assert real_comm in names
+    assert names == sorted(set(names))  # deduplicated and sorted, as documented

@@ -239,6 +239,59 @@ def test_folders_legend_icons_are_non_null():
         assert not tab._legend_list.item(row).icon().isNull()
 
 
+def test_file_types_tab_dynamic_detail_lists_contributing_directories():
+    tab = FileTypesTab()
+    tab.update_results(_analysis_result(_records()))
+
+    detail = tab._dynamic_detail
+    assert "/demo" in detail  # all three fixture records live directly under /demo
+    assert ".jpg" in detail and ".txt" in detail
+
+
+def test_folders_tab_dynamic_detail_empty_when_nothing_folded_into_other():
+    tab = FoldersTab()
+    tab.update_results(_analysis_result(_records()))  # fewer than 8 top-level folders -> no "(other)"
+
+    assert tab._dynamic_detail == ""
+
+
+def test_folders_tab_dynamic_detail_lists_folders_folded_into_other():
+    records = [FileRecord(f"/demo/dir{i}/f.txt", 100, ".txt", 0, 0, 0, 0) for i in range(10)]
+    tab = FoldersTab()
+    tab.update_results(_analysis_result(records))
+
+    detail = tab._dynamic_detail
+    assert "(other)" in detail
+    # the 8 largest are shown directly in the legend; the smallest 2 are folded in
+    assert "/demo/dir8" in detail or "/demo/dir9" in detail
+
+
+def test_clusters_tab_dynamic_detail_lists_cluster_directories():
+    points = [
+        ClusterPoint(path="/demo/a.txt", size=5000, days_since_access=1, cluster_id=0),
+        ClusterPoint(path="/demo/b.jpg", size=3000, days_since_access=400, cluster_id=1),
+    ]
+    summaries = [
+        ClusterSummary(cluster_id=0, label="Small & Active", file_count=1, total_size=5000, median_size=5000, median_days_since_access=1),
+        ClusterSummary(cluster_id=1, label="Small & Stale", file_count=1, total_size=3000, median_size=3000, median_days_since_access=400),
+    ]
+    clustering = ClusteringResult(points=points, summaries=summaries)
+
+    tab = ClustersTab()
+    tab.update_results(_analysis_result(_records(), clustering=clustering))
+
+    detail = tab._dynamic_detail
+    assert "Small & Active" in detail and "Small & Stale" in detail
+    assert "/demo" in detail
+
+
+def test_clusters_tab_dynamic_detail_cleared_when_no_clustering_result():
+    tab = ClustersTab()
+    tab.update_results(_analysis_result(_records(), clustering=None))
+
+    assert tab._dynamic_detail == ""
+
+
 def test_clusters_legend_icons_are_non_null():
     points = [ClusterPoint(path="/demo/a.txt", size=5000, days_since_access=1, cluster_id=0)]
     summaries = [

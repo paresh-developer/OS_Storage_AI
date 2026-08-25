@@ -42,6 +42,16 @@ _SERVICE_ADVICE = {
 _MIN_ADVISORY_BYTES = 100 * 1024 * 1024
 
 
+def advice_for(category: str, known_service: str | None) -> str | None:
+    """The same lookup build_category_recommendations uses, exposed for
+    callers that have a category/service pair but no byte total to gate a
+    full Recommendation on (app_suggestions.py, discovering a running
+    application's path rather than scanning a folder)."""
+    if known_service:
+        return _SERVICE_ADVICE.get(known_service)
+    return _CATEGORY_ADVICE.get(category)
+
+
 def build_category_recommendations(category_totals: dict[tuple[str, str | None], int]) -> list[Recommendation]:
     """`category_totals` maps (category, known_service) -> total bytes, as
     produced by pipeline.py from the per-file classifications."""

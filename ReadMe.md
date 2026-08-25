@@ -12,6 +12,51 @@ a concrete reason. See [`docs/METHODOLOGY.md`](docs/METHODOLOGY.md) for the
 full write-up, and [`future_plan.md`](future_plan.md) for scalability and
 local-LLM ideas not yet built.
 
+## Novelty
+
+None of the individual algorithms here are new — hashing, a random-forest
+classifier, K-means, linear regression, and extractive QA are all
+textbook techniques. What's actually novel is how they're composed:
+
+- **Reliability-ordered discovery, not table-first or model-first.**
+  Finding an unknown application's storage path tries the cheapest, most
+  certain signal first (live process introspection via `/proc`), then a
+  declared config setting, and only reaches an optional local LLM for the
+  narrow remainder that doesn't parse as anything structured — the
+  opposite of the common "LLM by default, rules as a fallback" pattern.
+- **A deterministic gate around every non-deterministic component,
+  applied consistently, not once.** The same discipline — never trust a
+  model's own confidence alone — shows up independently in the unused-file
+  classifier's heuristic fallback, the advisory system's read-only stance,
+  and a mandatory path-shape check on the LLM discovery tier that was
+  added only after a *real, reproduced* hallucination (0.47 confidence on
+  text with no path in it at all) was found empirically, not guessed at in
+  advance.
+- **A single-app lookup, reused unchanged as a whole-system inventory.**
+  `app_discovery.py` answers "where does this one named app store its
+  data." `app_suggestions.py` doesn't add new discovery logic at all — it
+  just calls that same function once per distinct process currently
+  running, turning a single-app primitive into "audit every application
+  on this machine right now" for free. The only new logic is a relevance
+  filter (does the discovered path classify into a category/service with
+  real advisory text?), which keeps the result a short, actionable list
+  instead of a dump of every running process.
+- **On-demand provenance for every displayed total, not just the ML
+  outputs.** A category total like "User data: 1.3 GB" is a sum across an
+  unknown number of files — opaque unless you go dig through the folder
+  yourself. `legend_detail.py` is one small, chart-agnostic module reused
+  as-is across four structurally different displays (a pie chart, a
+  treemap, a scatter plot, and a plain label box) to answer "what's
+  actually in this number" on click, without cluttering the default view.
+  It extends this project's explainability stance beyond justifying ML
+  decisions to justifying every aggregate number's actual contents.
+
+Full detail on the first two points, including that hallucination case
+and the regression test that locks it in, is in
+[Section 9 of the methodology](docs/METHODOLOGY.md#9-novelty--whats-actually-new-here-and-what-isnt)
+(the batch-discovery and per-chart provenance points aren't written up
+there yet).
+
 ## Features
 
 - **Duplicate detection** — exact byte-for-byte duplicates found via a
@@ -53,6 +98,47 @@ local-LLM ideas not yet built.
   CPU-only extractive-QA model as a last resort for configs in a format
   nothing else understands. See [Section 8 of the methodology](docs/METHODOLOGY.md#8-application-storage-path-discovery--beyond-the-curated-table).
 
+  The last tier is the most useful example: a config file that's just
+  prose, not any structured format —
+  `"This service reads and writes files under /var/lib/acmeservice/store
+  as its working directory."` — fails `config_discovery.parse_config_file`
+  outright (it isn't JSON/YAML/TOML/INI), but the optional local model
+  still recovers the path correctly:
+  ```python
+  >>> from storage_ai import llm_config_extractor
+  >>> llm_config_extractor.extract_storage_path(
+  ...     "This service reads and writes files under /var/lib/acmeservice/store "
+  ...     "as its working directory."
+  ... )
+  LLMExtractionResult(path='/var/lib/acmeservice/store', confidence=0.65, question='What is the data directory?')
+  ```
+  This is exactly the case §8 tier 3 exists for — not key=value configs
+  (tier 2 already handles those), but freeform text describing a path in
+  a sentence.
+
+  This exact call is no longer something you'd only run from a REPL: the
+  **App Data Suggestions** GUI tab runs the same `extract_storage_path`
+  fallback automatically, in batch, across every application currently
+  running on the machine, with its own Run/Rerun and Stop controls
+  (cancellable mid-run, same as the main scan). Two differences from the
+  raw REPL call above are worth knowing: the tab only ever reaches tier 3
+  for an app that's actually running right now *and* whose config file
+  fails to parse as anything structured (tiers 1/2 come first, same
+  priority order as `app_discovery.py`), and it only lists a result if
+  the discovered path also classifies into a category/service with real
+  advisory text — so "AcmeService" from the example above wouldn't appear
+  in the tab's list unless it were both running and a recognized
+  category, even though `extract_storage_path` itself would still
+  correctly extract its path either way.
+- **"What's actually in this number" on every chart tab** — the Dashboard's
+  storage-by-category totals, and the File Types/Folders/Clusters charts,
+  each have an ℹ button that lists the real directories behind whatever
+  total or legend row it's showing (e.g. which folders actually make up
+  "User data: 1.3 GB"), not just a static explanation of how the chart
+  works. The Forecast tab's ℹ button stays as a static explanation only —
+  a growth-rate line isn't an aggregate of many paths, so there's nothing
+  to break down.
+
 ## Project layout
 
 ```
@@ -78,6 +164,8 @@ storage_ai/
   config_discovery.py   finds + parses an app's config file, extracts path-like settings
   llm_config_extractor.py   optional local CPU-only extractive-QA fallback (see requirements-llm.txt)
   app_discovery.py       orchestrates the 3 tiers above into one ranked result
+  app_suggestions.py     batch app_discovery across every running process, filtered to actionable ones
+  legend_detail.py       groups files by directory for chart tabs' "what's actually in this number" info dialogs
   gui/                  PySide6 desktop UI
 tests/                  pytest suite for the non-GUI logic
 docs/METHODOLOGY.md     design rationale for the report
@@ -112,7 +200,9 @@ Pick a folder, click **Scan**, then use the Dashboard, File Types, Forecast,
 Folders, Clusters, Duplicates, Unused Files, and Recommendations tabs to
 review and act on the results. The **Live Activity** tab is independent of
 scanning — pick a folder there and click **Start Live Monitoring** to watch
-it in real time.
+it in real time. The **App Data Suggestions** tab is independent too — click
+**Run** to check every application currently running on this machine, no
+folder needed.
 
 For monitoring that keeps running even when the GUI is closed (the point on
 a server), run the watcher as its own process instead:

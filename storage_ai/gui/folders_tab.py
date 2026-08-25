@@ -43,6 +43,19 @@ def _folder_totals(records, root: str) -> dict[str, int]:
     return totals
 
 
+def _format_other_detail(other_items: list[tuple[str, int]], root: str) -> str:
+    """Each row shown in the treemap/legend is already one real top-level
+    directory -- the one place that's NOT self-evident is what got folded
+    into "(other)", so that's what this surfaces."""
+    if not other_items:
+        return ""
+    lines = []
+    for name, size in sorted(other_items, key=lambda kv: kv[1], reverse=True):
+        full_path = root if name == "(root)" else str(Path(root) / name)
+        lines.append(f"  {full_path}  --  {human_size(size)}")
+    return "Folded into \"(other)\" above (smaller than the 8 largest folders):\n\n" + "\n".join(lines)
+
+
 class FoldersTab(ChartTab):
     def __init__(self) -> None:
         super().__init__("About: Storage by Top-Level Folder", _INFO_SUMMARY, _INFO_DETAILS)
@@ -60,6 +73,8 @@ class FoldersTab(ChartTab):
         top_items, other_items = items[:_MAX_TREEMAP_ITEMS], items[_MAX_TREEMAP_ITEMS:]
         if other_items:
             top_items.append(("(other)", sum(size for _, size in other_items)))
+
+        self._set_dynamic_detail(_format_other_detail(other_items, result.root))
 
         rects = compute_treemap(top_items, width=1.0, height=1.0)
         colors = [

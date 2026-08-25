@@ -70,6 +70,25 @@ def find_pids_by_name(name: str) -> list[int]:
     return matches
 
 
+def list_running_process_names() -> list[str]:
+    """Every distinct process name (/proc/<pid>/comm) currently visible on
+    this machine, deduplicated and sorted. The starting point for batch
+    discovery across every running application at once (app_suggestions.py),
+    as opposed to find_pids_by_name's "one app I already have a name for"."""
+    names = set()
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/comm") as f:
+                comm = f.read().strip()
+        except OSError:
+            continue
+        if comm:
+            names.add(comm)
+    return sorted(names)
+
+
 def read_cmdline(pid: int) -> list[str] | None:
     try:
         with open(f"/proc/{pid}/cmdline", "rb") as f:

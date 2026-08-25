@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from storage_ai import database
+from storage_ai.gui.app_suggestions_tab import AppSuggestionsTab
 from storage_ai.gui.clusters_tab import ClustersTab
 from storage_ai.gui.dashboard_tab import DashboardTab
 from storage_ai.gui.duplicates_tab import DuplicatesTab
@@ -70,6 +71,7 @@ class MainWindow(QMainWindow):
         self._unused_tab = UnusedTab()
         self._recommendations_tab = RecommendationsTab()
         self._live_activity_tab = LiveActivityTab()
+        self._app_suggestions_tab = AppSuggestionsTab()
         self._tabs.addTab(self._dashboard_tab, "Dashboard")
         self._tabs.addTab(self._file_types_tab, "File Types")
         self._tabs.addTab(self._forecast_tab, "Forecast")
@@ -79,6 +81,7 @@ class MainWindow(QMainWindow):
         self._tabs.addTab(self._unused_tab, "Unused Files")
         self._tabs.addTab(self._recommendations_tab, "Recommendations")
         self._tabs.addTab(self._live_activity_tab, "Live Activity")
+        self._tabs.addTab(self._app_suggestions_tab, "App Data Suggestions")
         layout.addWidget(self._tabs)
 
     def _build_menu_bar(self) -> None:
@@ -219,4 +222,5 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._live_activity_tab.stop_if_monitoring()
+        self._app_suggestions_tab.stop_if_running()
         super().closeEvent(event)

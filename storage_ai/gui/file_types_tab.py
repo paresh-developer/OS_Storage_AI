@@ -7,6 +7,7 @@ from collections import defaultdict
 from PySide6.QtWidgets import QListWidgetItem
 
 from storage_ai.gui.chart_tab import ChartTab, make_color_icon
+from storage_ai.legend_detail import format_directory_breakdown
 from storage_ai.pipeline import AnalysisResult
 from storage_ai.utils import human_size
 
@@ -24,6 +25,16 @@ _INFO_DETAILS = (
 )
 
 
+def _format_extension_detail(top: list[tuple[str, int]], by_extension: dict[str, list]) -> str:
+    if not top:
+        return ""
+    sections = [
+        f"{ext}  --  {human_size(size)}\n" + format_directory_breakdown([(r.path, r.size) for r in by_extension[ext]])
+        for ext, size in top
+    ]
+    return "Top contributing directories for each file type above:\n\n" + "\n\n".join(sections)
+
+
 class FileTypesTab(ChartTab):
     def __init__(self) -> None:
         super().__init__("About: Storage by File Type", _INFO_SUMMARY, _INFO_DETAILS)
@@ -32,10 +43,14 @@ class FileTypesTab(ChartTab):
     def update_results(self, result: AnalysisResult) -> None:
         self._reset_selection()
 
-        totals: dict[str, int] = defaultdict(int)
+        by_extension: dict[str, list] = defaultdict(list)
         for record in result.records:
-            totals[record.extension or "(none)"] += record.size
-        top = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)[:8]
+            by_extension[record.extension or "(none)"].append(record)
+        top = sorted(
+            ((ext, sum(r.size for r in records)) for ext, records in by_extension.items()),
+            key=lambda kv: kv[1],
+            reverse=True,
+        )[:8]
 
         self._ax.clear()
         self._wedges = []
@@ -48,6 +63,8 @@ class FileTypesTab(ChartTab):
                 self._legend_list.addItem(QListWidgetItem(icon, f"{ext}  --  {human_size(size)}"))
         self._ax.set_title("Storage by file type")
         self._canvas.draw()
+
+        self._set_dynamic_detail(_format_extension_detail(top, by_extension))
 
     def _apply_highlight(self, selected_row: int | None) -> None:
         for i, wedge in enumerate(self._wedges):

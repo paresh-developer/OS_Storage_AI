@@ -480,6 +480,98 @@ decoding tokens directly — naive token decoding fragments paths on `/`,
 incorrect version of this code produced answers like `"mongo - storage"`
 for exactly this reason).
 
+## 9. Novelty — what's actually new here, and what isn't
+
+Worth being direct about this for a report: none of the individual
+algorithms in this project are new. SHA-256 hashing, a
+`RandomForestClassifier`, K-means, ordinary least-squares linear
+regression, and extractive question-answering are all standard,
+well-established techniques — nothing above claims to improve on any of
+them as algorithms. What's actually being claimed as a contribution is
+how they're *composed*, at two specific points, both illustrated with the
+same real evidence already documented above rather than asserted fresh
+here.
+
+### 9.1 Reliability-ordered discovery, not table-first or model-first
+
+Faced with "where does an application I've never been told about store
+its data," there are two well-worn defaults: a hardcoded lookup table
+(only ever knows what it's explicitly taught), or reach for an LLM as the
+default path and treat rules as the fallback for the "easy" cases. §8's
+`app_discovery.discover_app_storage_paths()` does neither — it orders
+four signals strictly by how cheap and how certain each one is, and a
+later tier runs only when every earlier tier produced nothing:
+
+1. **Process introspection** (`process_introspection.py`) — observes what
+   a live process is actually doing (`/proc/<pid>/cmdline`,
+   `/proc/<pid>/fd/*`), not an inference about it.
+2. **Structured config parsing** (`config_discovery.py`) — a declared
+   setting; works even when nothing is currently running.
+3. *(The curated table, `path_classifier.py`, is deliberately not one of
+   these tiers at all — it classifies a path you already have, the
+   opposite direction from discovering one; see §8's own framing note.)*
+4. **The optional local LLM** (`llm_config_extractor.py`) — reached only
+   for the narrow remainder: a config file exists but parsed as nothing
+   §8 tier 2 understands.
+
+The ordering is the actual design decision, not an implementation detail:
+it inverts the common "LLM by default, fall back to rules for easy cases"
+shape into "rules by default, reach for the model only for the residual
+that's genuinely too messy for deterministic code." That keeps the
+slowest, least-certain, and only-network-adjacent-in-principle tier rare
+in practice rather than the default execution path for every lookup.
+
+### 9.2 One deterministic-gate discipline, applied at three independent points
+
+A second pattern shows up, unprompted, at three unrelated layers of this
+app that were each designed to solve a different problem — the shared
+rule in all three is *never let a model's own self-reported confidence be
+the sole authority; pair it with an independent, deterministic check that
+can veto it*:
+
+- **§2, `unused.py`.** When there isn't enough scan history to
+  weakly-label a real training set, the classifier isn't forced into
+  service anyway on thin data — it's replaced outright by the pure
+  heuristic. The fallback trigger is a deterministic data-sufficiency
+  check, not the classifier's own reported certainty.
+- **§4/§5, `category_advisor.py`.** Advisory text is informational only,
+  regardless of how strong a category/service match is — no advisory
+  string can itself trigger a delete or archive. Confidence in the match
+  only ever affects what's *said*, never what's *done*.
+- **§8 tier 3, `llm_config_extractor.py`.** This is the case with the
+  clearest hard evidence: the model's own confidence score was
+  empirically shown to be untrustworthy alone — a verified, reproduced
+  case where it reported 0.47 confidence (above the originally-planned
+  0.4 threshold) while extracting an answer from text that contained no
+  storage path at all. The fix was a second, mandatory, deterministic
+  path-shape check that must *also* pass, independent of the confidence
+  number, before any extraction is used. It is now a permanent regression
+  test (`test_rejects_the_verified_hallucination_case`), not a one-off
+  patch.
+
+The part worth emphasizing for a defense isn't "pair ML with a sanity
+check" in the abstract — that's genuinely standard advice, not a
+discovery. What's actually notable is that (a) the §8 case wasn't a
+speculative safeguard added just in case; it exists because a real
+failure was found and reproduced first, and the fix was verified to
+actually catch that exact case going forward, and (b) the same underlying
+discipline was already present, independently, in two other subsystems
+built earlier in the project for unrelated reasons — suggesting a
+consistent design stance across the codebase rather than a fix
+localized to wherever the bug happened to surface.
+
+### 9.3 What this section is not claiming
+
+To be equally direct about the limits of this claim: composing known
+techniques with a tiering strategy and a verification discipline is
+sound systems design, not a research contribution to machine learning
+itself. Nothing here proposes a new model, a new training method, or a
+new algorithm. The novelty is scoped entirely to *how the pieces are
+ordered and gated*, and is only as strong as the testing behind it — see
+each section's own "verified against real X vs. mocked" notes above,
+which is exactly why those distinctions were tracked so carefully
+throughout this document rather than glossed over.
+
 ## Safety
 
 No recommendation is ever executed automatically, and no action is a hard

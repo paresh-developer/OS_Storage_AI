@@ -12,7 +12,7 @@ import shutil
 import time
 from collections import defaultdict
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from storage_ai import database
@@ -27,7 +27,7 @@ from storage_ai.models import (
     StorageForecast,
     UnusedCandidate,
 )
-from storage_ai.path_classifier import classify_path
+from storage_ai.path_classifier import PathClassification, classify_path
 from storage_ai.prediction import forecast_storage
 from storage_ai.recommender import build_recommendations
 from storage_ai.scanner import count_files, scan_directory
@@ -58,6 +58,7 @@ class AnalysisResult:
     recommendations: list[Recommendation]
     clustering: ClusteringResult | None
     category_totals: dict[tuple[str, str | None], int]
+    classifications: dict[str, PathClassification] = field(default_factory=dict)
 
 
 def run_analysis(
@@ -150,4 +151,5 @@ def run_analysis(
         recommendations=recommendations,
         clustering=clustering,
         category_totals=dict(category_totals),
+        classifications=classifications,
     )
