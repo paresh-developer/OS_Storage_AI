@@ -57,6 +57,100 @@ and the regression test that locks it in, is in
 (the batch-discovery and per-chart provenance points aren't written up
 there yet).
 
+## Architecture
+
+```mermaid
+flowchart TB
+    User(["User"])
+
+    subgraph GUI["storage_ai/gui/ (PySide6)"]
+        direction LR
+        ChartTabs["Dashboard · File Types · Forecast\nFolders · Clusters"]
+        ListTabs["Duplicates · Unused Files\nRecommendations"]
+        LiveTab["Live Activity"]
+        AppTab["App Data Suggestions"]
+    end
+
+    User --> ChartTabs & ListTabs & LiveTab & AppTab
+
+    subgraph Core["pipeline.py -- run_analysis (one folder)"]
+        direction TB
+        Scan["scanner.py"] --> Class["path_classifier.py"]
+        Scan --> Hash["hashing.py -> duplicates.py"]
+        Scan --> Unused["unused.py"]
+        Scan --> Cluster["clustering.py"]
+        Scan --> Predict["prediction.py"]
+        Class --> Advisor["category_advisor.py"]
+        Hash --> Rec["recommender.py"]
+        Unused --> Rec
+        Predict --> Rec
+        Advisor --> Rec
+    end
+
+    ChartTabs --> Core
+    ListTabs --> Core
+    Rec --> Actions["actions.py\n(trash / archive -- never a hard delete)"]
+
+    subgraph Discover["Application discovery (docs Section 8)"]
+        direction TB
+        Batch["app_suggestions.py\n(every running process)"] --> AppDisc["app_discovery.py"]
+        AppDisc --> T1["1. process_introspection.py\n(live /proc observation)"]
+        AppDisc --> T2["2. config_discovery.py\n(JSON / YAML / TOML / INI)"]
+        AppDisc -. "3. only if 1 & 2 found nothing" .-> T3["llm_config_extractor.py\n(optional, CPU-only)"]
+        AppDisc --> Class
+        AppDisc --> Advisor
+    end
+
+    AppTab --> Batch
+
+    subgraph Monitor["Live activity monitoring (docs Section 6)"]
+        direction TB
+        Svc["watcher_service.py\n(standalone process)"] --> Watch["watcher.py\n(watchdog, cross-platform)"]
+        Svc -. "--enable-audit" .-> AuditL["audit_log.py\n(Linux auditd, optional)"]
+        Watch --> Trend["trend_detector.py"]
+    end
+
+    LiveTab --> Watch
+
+    DB[("database.py\nSQLite -- ~/.storage_ai/")]
+    Core --> DB
+    Watch --> DB
+    Trend --> DB
+```
+
+A static PNG of the same diagram (for viewers that don't render Mermaid --
+a PDF export, a slide, a plain image viewer) lives at
+[`docs/architecture.png`](docs/architecture.png):
+
+![Architecture diagram](docs/architecture.png)
+
+It's generated, not hand-drawn -- see
+[`docs/generate_architecture_diagram.py`](docs/generate_architecture_diagram.py)
+(matplotlib, already a core dependency, so this needed no new install).
+Re-run it after a structural change and update the Mermaid block above to
+match, rather than hand-editing the PNG.
+
+Two orchestrators sit side by side, not one monolith: `pipeline.py` walks a
+folder you pick; `app_suggestions.py`/`watcher_service.py` walk the OS's
+running-process table and live filesystem events instead, and each stays
+independently runnable and cancellable from its own GUI tab. The three
+application-discovery tiers are tried strictly in reliability order (§8);
+the optional LLM tier is the only one with an extra dependency and the
+only one skipped automatically when that dependency isn't installed.
+
+### Presentation
+
+A ready-to-present overview deck lives at
+[`docs/presentation.pptx`](docs/presentation.pptx) — motivation, design
+philosophy, the architecture diagram above, a walkthrough of each
+subsystem, the novelty/limitations/future-work points from this ReadMe,
+and real screenshots from a genuine scan (not mock-ups; see
+`docs/screenshots/`). Also generated, not hand-built — see
+[`docs/generate_presentation.py`](docs/generate_presentation.py)
+(`python-pptx`, a one-time `pip install`, not part of the app's own
+dependencies) — re-run it after updating this ReadMe rather than hand-editing
+the slides.
+
 ## Features
 
 - **Duplicate detection** — exact byte-for-byte duplicates found via a
