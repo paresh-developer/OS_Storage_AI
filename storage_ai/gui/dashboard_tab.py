@@ -12,12 +12,12 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
 
+from storage_ai.gui.info_dialog import show_info_dialog
 from storage_ai.legend_detail import format_directory_breakdown
 from storage_ai.path_classifier import (
     CATEGORY_APPLICATION_DATA,
@@ -103,7 +103,7 @@ class DashboardTab(QWidget):
         return box
 
     def _show_category_info(self) -> None:
-        QMessageBox.information(
+        show_info_dialog(
             self,
             "About: Storage by Category",
             "Each total above is a sum across every file this scan classified into that "

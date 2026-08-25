@@ -32,6 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from storage_ai import database, trend_detector
+from storage_ai.gui.info_dialog import show_info_dialog
 from storage_ai.models import file_event_from_row
 from storage_ai.utils import human_size
 from storage_ai.watcher import LiveWatcher, LiveWatcherError
@@ -212,10 +213,10 @@ class LiveActivityTab(QWidget):
         return container
 
     def _show_info(self) -> None:
-        QMessageBox.information(self, "About: Live Activity Monitoring", _INFO_DETAILS)
+        show_info_dialog(self, "About: Live Activity Monitoring", _INFO_DETAILS)
 
     def _show_alerts_info(self) -> None:
-        QMessageBox.information(self, "About: Alerts", _alert_examples_text())
+        show_info_dialog(self, "About: Alerts", _alert_examples_text())
 
     def _browse_for_folder(self) -> None:
         folder = QFileDialog.getExistingDirectory(self, "Select folder to monitor")

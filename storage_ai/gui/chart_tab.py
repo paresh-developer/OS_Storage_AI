@@ -40,11 +40,12 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
 )
+
+from storage_ai.gui.info_dialog import show_info_dialog
 
 _LEGEND_TOOLTIP = "Click a row to highlight it in the chart and dim the rest. Click it again, or use Clear Selection, to restore the default view."
 _SWATCH_SIZE = 14
@@ -135,7 +136,7 @@ class ChartTab(QWidget):
         text = self._info_details
         if self._dynamic_detail:
             text = f"{text}\n\n{self._dynamic_detail}"
-        QMessageBox.information(self, self._info_title, text)
+        show_info_dialog(self, self._info_title, text)
 
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         row = self._legend_list.row(item)

@@ -116,3 +116,83 @@ def test_real_running_process_end_to_end(monkeypatch):
 
     assert isinstance(suggestions, list)
     assert all(s.advice for s in suggestions)
+
+
+def test_path_size_bytes_for_a_real_file(tmp_path):
+    f = tmp_path / "data.bin"
+    f.write_bytes(b"x" * 12345)
+
+    assert app_suggestions.path_size_bytes(str(f)) == 12345
+
+
+def test_path_size_bytes_sums_nested_directory_contents(tmp_path):
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "a.log").write_bytes(b"1" * 100)
+    (tmp_path / "sub" / "b.log").write_bytes(b"2" * 250)
+
+    assert app_suggestions.path_size_bytes(str(tmp_path)) == 350
+
+
+def test_path_size_bytes_returns_zero_for_a_nonexistent_path():
+    assert app_suggestions.path_size_bytes("/this/path/does/not/exist/anywhere") == 0
+
+
+def test_severity_for_size_thresholds():
+    assert app_suggestions.severity_for_size(0) == app_suggestions.SEVERITY_NORMAL
+    assert app_suggestions.severity_for_size(app_suggestions.LARGE_SIZE_BYTES - 1) == app_suggestions.SEVERITY_NORMAL
+    assert app_suggestions.severity_for_size(app_suggestions.LARGE_SIZE_BYTES) == app_suggestions.SEVERITY_LARGE
+    assert app_suggestions.severity_for_size(app_suggestions.CRITICAL_SIZE_BYTES - 1) == app_suggestions.SEVERITY_LARGE
+    assert app_suggestions.severity_for_size(app_suggestions.CRITICAL_SIZE_BYTES) == app_suggestions.SEVERITY_CRITICAL
+
+
+def test_suggestion_reports_real_size_and_flags_it_as_large(monkeypatch, tmp_path):
+    """End-to-end: a real directory on disk, discovered via mocked
+    process_introspection/app_discovery (those tiers are tested on their
+    own elsewhere), but the size walk and severity classification below
+    that point are entirely real -- this is the exact mechanism a 1 TB
+    MongoDB data directory would go through, just with the LARGE/CRITICAL
+    thresholds lowered so a small real directory can cross them in a test
+    without writing gigabytes of test data."""
+    (tmp_path / "big.log").write_bytes(b"x" * 2000)
+    monkeypatch.setattr(app_suggestions, "LARGE_SIZE_BYTES", 1000)
+    monkeypatch.setattr(app_suggestions, "CRITICAL_SIZE_BYTES", 10_000)
+
+    monkeypatch.setattr(process_introspection, "list_running_process_names", lambda: ["mongod"])
+    monkeypatch.setattr(
+        app_discovery,
+        "discover_app_storage_paths",
+        lambda name, **kwargs: [app_discovery.StoragePathFinding(path=str(tmp_path), confidence=0.95, source="process_cmdline_flag", detail="--dbpath")],
+    )
+    monkeypatch.setattr(
+        path_classifier, "classify_path", lambda path: PathClassification(category="application_data", known_service="MongoDB")
+    )
+    monkeypatch.setattr(category_advisor, "advice_for", lambda category, service: "Consider log rotation.")
+
+    suggestions = app_suggestions.discover_running_app_suggestions()
+
+    assert len(suggestions) == 1
+    assert suggestions[0].size_bytes == 2000
+    assert suggestions[0].severity == app_suggestions.SEVERITY_LARGE
+
+
+def test_sort_prioritizes_severity_over_confidence(monkeypatch, tmp_path):
+    big_dir = tmp_path / "big"
+    big_dir.mkdir()
+    (big_dir / "f.log").write_bytes(b"x" * 5000)
+
+    monkeypatch.setattr(app_suggestions, "LARGE_SIZE_BYTES", 1000)
+    monkeypatch.setattr(app_suggestions, "CRITICAL_SIZE_BYTES", 3000)
+    monkeypatch.setattr(process_introspection, "list_running_process_names", lambda: ["lowconf_critical", "highconf_normal"])
+
+    def fake_discover(name, **kwargs):
+        if name == "lowconf_critical":
+            return [app_discovery.StoragePathFinding(path=str(big_dir), confidence=0.2, source="config_file", detail="d")]
+        return [app_discovery.StoragePathFinding(path="/does/not/exist", confidence=0.95, source="config_file", detail="d")]
+
+    monkeypatch.setattr(app_discovery, "discover_app_storage_paths", fake_discover)
+    monkeypatch.setattr(path_classifier, "classify_path", lambda path: PathClassification(category="log", known_service=None))
+    monkeypatch.setattr(category_advisor, "advice_for", lambda category, service: "Rotate logs.")
+
+    suggestions = app_suggestions.discover_running_app_suggestions()
+
+    assert [s.app_name for s in suggestions] == ["lowconf_critical", "highconf_normal"]
