@@ -343,11 +343,23 @@ def main():
         [
             "app_suggestions.py reuses app_discovery.py unchanged, once per distinct running process.",
             "Only surfaces a finding if it maps to real advisory text — stays a short, actionable list.",
+            "The discovered path's real on-disk usage is measured and flagged if unusually large.",
             "Independent Run / Rerun and Stop controls, cancellable mid-run — same pattern as the main scan.",
-            "The screenshot is a genuine finding from this machine, not a mock-up.",
         ],
         os.path.join(SCREENSHOTS, "app_suggestions.png"),
-        footer="Storage AI  ·  App Data Suggestions tab  ·  real result from a live run",
+        footer="Storage AI  ·  App Data Suggestions tab  ·  real classification/advice/severity logic",
+    )
+
+    bullets_slide(
+        prs, "APPLICATION DISCOVERY", "Worked example: a 1 TB MongoDB data directory",
+        [
+            "mongod is found running with --dbpath /var/lib/mongodb (tier 1, live process introspection).",
+            "Classified via the curated table as MongoDB → generic advice: \"Consider MongoDB's built-in log rotation...\"",
+            "A real filesystem walk of that path measures its actual size — deferred until after every cheaper filter already passed, so it's not wasted on findings nobody will see.",
+            "1 TB crosses the 50 GB \"critical\" threshold → the row is flagged ❗, bold, colored, and sorted to the top, ahead of every other finding regardless of discovery confidence.",
+            "Previously the same finding would show identical advice whether it used 10 MB or 10 TB — the size check is what turns a generic tip into an actual priority.",
+        ],
+        footer="Storage AI  ·  Worked example  ·  LARGE_SIZE_BYTES = 5 GB, CRITICAL_SIZE_BYTES = 50 GB",
     )
 
     bullets_slide(

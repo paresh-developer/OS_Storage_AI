@@ -224,6 +224,26 @@ the slides.
   in the tab's list unless it were both running and a recognized
   category, even though `extract_storage_path` itself would still
   correctly extract its path either way.
+
+  **Worked example — a 1 TB MongoDB data directory.** Discovery alone
+  used to stop at "this is MongoDB, here's generic advice" regardless of
+  whether that data directory was 10 MB or 10 TB. It doesn't anymore: the
+  discovered path's real on-disk usage is now measured with an actual
+  filesystem walk (deferred until after every cheaper filter already
+  passed, so it's never wasted on a finding nobody will see), and checked
+  against two plain, explainable thresholds — `LARGE_SIZE_BYTES = 5 GB`,
+  `CRITICAL_SIZE_BYTES = 50 GB` (`storage_ai/app_suggestions.py`). A 1 TB
+  `mongod` data directory clears the critical threshold by a wide margin,
+  so that row renders bold and red, and — regardless of how confidently
+  it was discovered — sorts to the very top, ahead of every other
+  finding:
+
+  ![App Data Suggestions: a MongoDB directory flagged as critically large](docs/screenshots/app_suggestions.png)
+
+  *(The 1 TB figure above is illustrative — this demo machine doesn't have*
+  *a spare terabyte of real MongoDB logs to point at — but the*
+  *classification, advice text, and severity shown are the real functions'*
+  *actual output, not a mock-up.)*
 - **"What's actually in this number" on every chart tab** — the Dashboard's
   storage-by-category totals, and the File Types/Folders/Clusters charts,
   each have an ℹ button that lists the real directories behind whatever

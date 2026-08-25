@@ -149,7 +149,7 @@ def test_alerts_info_button_shows_all_four_alert_types(monkeypatch):
     tab = LiveActivityTab()
     shown = []
     monkeypatch.setattr(
-        "storage_ai.gui.live_activity_tab.QMessageBox.information",
+        "storage_ai.gui.live_activity_tab.show_info_dialog",
         lambda parent, title, text: shown.append((title, text)) or None,
     )
 
